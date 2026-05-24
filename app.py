@@ -259,7 +259,7 @@ def build_choropleth(state_risk: pd.DataFrame, geojson: dict | None) -> go.Figur
             mode       = "markers+text",
             textposition = "top center",
             marker     = dict(
-                size       = sr["taxa_pct"] * 3.5,
+                size       = sr["taxa_pct"] * 8,
                 color      = sr["taxa_pct"],
                 colorscale = "RdYlGn_r",
                 showscale  = True,
