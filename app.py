@@ -231,58 +231,25 @@ def build_gauge(proba: float) -> go.Figure:
     return fig
 
 
-def build_choropleth(state_risk: pd.DataFrame, geojson: dict | None) -> go.Figure:
-    """Choropleth colorido por taxa de atraso. Fallback: bubble map."""
-    if geojson is not None:
-        fig = px.choropleth(
-            state_risk,
-            geojson        = geojson,
-            locations = "codarea",
-            featureidkey = "properties.CD_GEOCUF",
-            color          = "taxa_pct",
-            color_continuous_scale = "RdYlGn_r",
-            range_color    = [0, min(state_risk["taxa_pct"].max(), 25)],
-            hover_name     = "estado",
-            hover_data     = {"taxa_pct": ":.1f", "n_rotas": True, "estado": False},
-            labels         = {"taxa_pct": "Taxa de Atraso (%)", "n_rotas": "Nº de Rotas"},
-        )
-        fig.update_geos(fitbounds="locations", visible=False)
-    else:
-        # Fallback: bolhas nos centroides dos estados
-        sr = state_risk.copy()
-        sr["lat"] = sr["estado"].map(lambda s: STATE_COORDS.get(s, (0, 0))[0])
-        sr["lon"] = sr["estado"].map(lambda s: STATE_COORDS.get(s, (0, 0))[1])
-        fig = go.Figure(go.Scattergeo(
-            lat        = sr["lat"],
-            lon        = sr["lon"],
-            text       = sr["estado"],
-            mode       = "markers+text",
-            textposition = "top center",
-            marker     = dict(
-                size       = sr["taxa_pct"] * 8,
-                color      = sr["taxa_pct"],
-                colorscale = "RdYlGn_r",
-                showscale  = True,
-                colorbar   = dict(title="Taxa (%)"),
-                sizemode   = "area",
-            ),
-            customdata = sr[["taxa_pct", "n_rotas"]].values,
-            hovertemplate = "<b>%{text}</b><br>Taxa: %{customdata[0]:.1f}%<br>Rotas: %{customdata[1]}<extra></extra>",
-        ))
-        fig.update_geos(
-            scope         = "south america",
-            showcountries = True,
-            countrycolor  = "#ccc",
-            showland      = True,
-            landcolor     = "#f8f8f8",
-            showcoastlines= True,
-            coastlinecolor= "#aaa",
-            center        = dict(lat=-14, lon=-52),
-            projection_scale = 3.2,
-        )
+def build_treemap(state_risk: pd.DataFrame) -> go.Figure:
+    """Treemap interativo: tamanho = n_rotas, cor = taxa de atraso."""
+    fig = px.treemap(
+        state_risk,
+        path        = ["estado"],
+        values      = "n_rotas",
+        color       = "taxa_pct",
+        color_continuous_scale = "RdYlGn_r",
+        range_color = [0, min(state_risk["taxa_pct"].max(), 20)],
+        hover_data  = {"taxa_pct": ":.1f", "n_rotas": True},
+        labels      = {"taxa_pct": "Taxa de Atraso (%)", "n_rotas": "Nº de Rotas"},
+    )
+    fig.update_traces(
+        texttemplate = "<b>%{label}</b><br>%{customdata[0]:.1f}%",
+        textfont_size = 14,
+    )
     fig.update_layout(
         height          = 520,
-        margin          = dict(t=10, b=10, l=0, r=0),
+        margin          = dict(t=10, b=10, l=10, r=10),
         paper_bgcolor   = "rgba(0,0,0,0)",
         coloraxis_colorbar = dict(title="Taxa de<br>Atraso (%)", ticksuffix="%"),
     )
@@ -541,17 +508,7 @@ with tab2:
         st.stop()
 
     state_risk, top_routes = prepare_map_data(lookup_route)
-    ggeojson = load_brazil_geojson()
-    IBGE_CODES = {
-        "AC":"12","AL":"27","AM":"13","AP":"16","BA":"29","CE":"23",
-        "DF":"53","ES":"32","GO":"52","MA":"21","MG":"31","MS":"50",
-        "MT":"51","PA":"15","PB":"25","PE":"26","PI":"22","PR":"41",
-        "RJ":"33","RN":"24","RO":"11","RR":"14","RS":"43","SC":"42",
-        "SE":"28","SP":"35","TO":"17",
-    }
-
-    # ── Mapa principal ────────────────────────────────────────────────────────
-    st.plotly_chart(build_choropleth(state_risk, geojson), use_container_width=True)
+    st.plotly_chart(build_treemap(state_risk), use_container_width=True)
 
     # ── KPIs abaixo do mapa ───────────────────────────────────────────────────
     st.divider()
