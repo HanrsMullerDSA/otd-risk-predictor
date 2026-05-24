@@ -1,0 +1,30 @@
+{
+  "features": [
+    "freight_value",
+    "product_weight_g",
+    "customer_state",
+    "seller_state",
+    "seller_id",
+    "route",
+    "weekday",
+    "month",
+    "hist_atraso_route_t",
+    "hist_atraso_seller_t",
+    "hist_atraso_route_smooth",
+    "prazo_prometido_dias",
+    "distancia_km",
+    "volume_seller_7d_t"
+  ],
+  "cat_cols": [
+    "customer_state",
+    "seller_state",
+    "seller_id",
+    "route"
+  ],
+  "threshold_padrao": 0.5,
+  "threshold_otimo": 0.3715302050113678,
+  "prior_global_atraso": 0.07240865819284156,
+  "volume_seller_mediano": 3.0,
+  "model_version": "2.0",
+  "auc_roc": 0.6738
+}
