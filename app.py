@@ -237,7 +237,7 @@ def build_choropleth(state_risk: pd.DataFrame, geojson: dict | None) -> go.Figur
         fig = px.choropleth(
             state_risk,
             geojson        = geojson,
-            locations      = "estado",
+            locations = "codarea",
             featureidkey = "properties.codarea",
             color          = "taxa_pct",
             color_continuous_scale = "RdYlGn_r",
