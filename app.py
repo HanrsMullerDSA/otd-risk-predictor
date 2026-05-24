@@ -76,18 +76,6 @@ def load_artifacts():
         encoders = json.load(f)
     return model, lookup_route, lookup_seller, encoders
 
-
-@st.cache_data(show_spinner=False)
-def load_brazil_geojson() -> dict | None:
-    """Baixa GeoJSON dos estados brasileiros (com fallback para None)."""
-    try:
-        r = requests.get(GEOJSON_URL, timeout=8)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
-
-
 @st.cache_data(show_spinner=False)
 def prepare_map_data(_lookup_route: pd.DataFrame):
     """
@@ -254,31 +242,6 @@ def build_treemap(state_risk: pd.DataFrame) -> go.Figure:
         coloraxis_colorbar = dict(title="Taxa de<br>Atraso (%)", ticksuffix="%"),
     )
     return fig
-
-
-def build_bar_chart(state_risk: pd.DataFrame) -> go.Figure:
-    top10  = state_risk.head(10).sort_values("taxa_pct")
-    colors = [bar_color(v) for v in top10["taxa_pct"]]
-    fig = go.Figure(go.Bar(
-        x            = top10["taxa_pct"],
-        y            = top10["estado"],
-        orientation  = "h",
-        marker_color = colors,
-        text         = [f"{v:.1f}%" for v in top10["taxa_pct"]],
-        textposition = "outside",
-        hovertemplate= "<b>%{y}</b><br>Taxa de Atraso: %{x:.1f}%<extra></extra>",
-    ))
-    fig.update_layout(
-        xaxis_title   = "Taxa Histórica de Atraso (%)",
-        yaxis_title   = None,
-        height        = 380,
-        margin        = dict(t=10, b=30, l=10, r=60),
-        paper_bgcolor = "rgba(0,0,0,0)",
-        plot_bgcolor  = "rgba(0,0,0,0)",
-        xaxis         = dict(showgrid=True, gridcolor="#eee"),
-    )
-    return fig
-
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
@@ -534,38 +497,25 @@ with tab2:
 
     # ── Gráfico de barras + Tabela de rotas ───────────────────────────────────
     st.divider()
-    col_bar, col_tbl = st.columns([1, 1], gap="large")
+    st.divider()
+    st.markdown("**Top 15 Rotas com Maior Risco Histórico**")
 
-    with col_bar:
-        st.markdown("**Top 10 Estados de Destino por Risco Histórico**")
-        st.plotly_chart(build_bar_chart(state_risk), use_container_width=True)
+    rename_map = {"route": "Rota", "hist_atraso_route_t": "Taxa Bruta (%)"}
+    if "hist_atraso_route_smooth" in top_routes.columns:
+        rename_map["hist_atraso_route_smooth"] = "Taxa Suavizada (%)"
 
-        # Legenda de cores
-        leg1, leg2, leg3, leg4 = st.columns(4)
-        leg1.markdown("🟢 **< 7%** Baixo")
-        leg2.markdown("🟡 **7–10%** Moderado")
-        leg3.markdown("🟠 **10–15%** Alto")
-        leg4.markdown("🔴 **> 15%** Crítico")
+    display_tbl = top_routes.rename(columns=rename_map)
 
-    with col_tbl:
-        st.markdown("**Top 15 Rotas com Maior Risco Histórico**")
+    fmt = {"Taxa Bruta (%)": "{:.1f}"}
+    if "Taxa Suavizada (%)" in display_tbl.columns:
+        fmt["Taxa Suavizada (%)"] = "{:.1f}"
 
-        rename_map = {"route": "Rota", "hist_atraso_route_t": "Taxa Bruta (%)"}
-        if "hist_atraso_route_smooth" in top_routes.columns:
-            rename_map["hist_atraso_route_smooth"] = "Taxa Suavizada (%)"
-
-        display_tbl = top_routes.rename(columns=rename_map)
-
-        fmt = {"Taxa Bruta (%)": "{:.1f}"}
-        if "Taxa Suavizada (%)" in display_tbl.columns:
-            fmt["Taxa Suavizada (%)"] = "{:.1f}"
-
-        styled = (
-            display_tbl.style
-            .background_gradient(subset=["Taxa Bruta (%)"], cmap="RdYlGn_r", vmin=0, vmax=30)
-            .format(fmt)
-        )
-        st.dataframe(styled, use_container_width=True, height=430)
+    styled = (
+        display_tbl.style
+        .background_gradient(subset=["Taxa Bruta (%)"], cmap="RdYlGn_r", vmin=0, vmax=30)
+        .format(fmt)
+    )
+    st.dataframe(styled, use_container_width=True, height=430)
 
     # ── Insights automáticos ──────────────────────────────────────────────────
     st.divider()
