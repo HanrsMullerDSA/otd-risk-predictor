@@ -2,7 +2,7 @@
 # Supply Chain Analytics Lab · Projeto 1
 # ──────────────────────────────────────────────────────────────────────────────
 
-import pickle
+import json
 import requests
 from datetime import date
 
@@ -72,8 +72,8 @@ def load_artifacts():
     model         = joblib.load("artifacts/modelo_balanceado.joblib")
     lookup_route  = pd.read_parquet("artifacts/lookup_route.parquet")
     lookup_seller = pd.read_parquet("artifacts/lookup_seller.parquet")
-    with open("artifacts/encoders.pkl", "rb") as f:
-        encoders = pickle.load(f)
+    with open("artifacts/encoders.json", "r", encoding="utf-8") as f:
+        encoders = json.load(f)
     return model, lookup_route, lookup_seller, encoders
 
 
