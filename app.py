@@ -266,7 +266,7 @@ with st.sidebar:
                                      value=20.00, step=0.50, format="%.2f")
 
     st.markdown("### 📅 Prazo")
-    purchase_date = st.date_input("Data da compra", value=date.today())
+    purchase_date = st.date_input("Data da compra", value=date.today(), format="DD/MM/YYYY")
     delivery_days = st.slider("Prazo prometido (dias corridos)",
                                min_value=2, max_value=60, value=14)
 
@@ -388,8 +388,13 @@ with tab1:
             c2.metric("Distância estimada",    f"{distancia:,.0f} km")
             c1.metric("Prazo prometido",       f"{delivery_days} dias")
             c2.metric("Dia da compra",         DIAS_SEMANA[weekday])
-            c1.metric("Mês",                   purchase_date.strftime("%B/%Y").capitalize())
-            c2.metric("Frete",                 f"R$ {freight_value:.2f}")
+            MESES_PT = {
+                            1:"Janeiro", 2:"Fevereiro", 3:"Março", 4:"Abril",
+                            5:"Maio", 6:"Junho", 7:"Julho", 8:"Agosto",
+                            9:"Setembro", 10:"Outubro", 11:"Novembro", 12:"Dezembro"
+                        }
+            c1.metric("Mês", f"{MESES_PT[purchase_date.month]}/{purchase_date.year}")        
+            c2.metric("Frete", f"R$ {freight_value:.2f}".replace(".", ","))
 
             st.markdown("**Sinais históricos da rota:**")
             c3, c4 = st.columns(2)
