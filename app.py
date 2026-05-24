@@ -49,8 +49,8 @@ ESTADOS     = sorted(STATE_COORDS.keys())
 DIAS_SEMANA = ["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"]
 
 GEOJSON_URL = (
-    "https://raw.githubusercontent.com/codeforamerica/click_that_hood"
-    "/master/public/data/brazil-states.geojson"
+    "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR"
+    "?formato=application/vnd.geo+json&qualidade=intermediaria&divisao=UF"
 )
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ def build_choropleth(state_risk: pd.DataFrame, geojson: dict | None) -> go.Figur
             state_risk,
             geojson        = geojson,
             locations      = "estado",
-            featureidkey   = "properties.abbreviation",
+            featureidkey = "properties.codarea",
             color          = "taxa_pct",
             color_continuous_scale = "RdYlGn_r",
             range_color    = [0, min(state_risk["taxa_pct"].max(), 25)],
@@ -343,6 +343,13 @@ with st.sidebar:
     st.divider()
     run = st.button("🔍  Calcular risco de atraso",
                     use_container_width=True, type="primary")
+    if run:
+        st.session_state["calculado"] = True
+
+    if st.session_state.get("calculado"):
+        if st.button("↩️  Nova consulta", use_container_width=True):
+            st.session_state["calculado"] = False
+            st.rerun()               
 
 # ═════════════════════════════════════════════════════════════════════════════
 # HEADER
@@ -364,7 +371,7 @@ tab1, tab2 = st.tabs(["🔍 Previsão de Risco", "🗺️ Mapa de Risco por Esta
 # ABA 1 — PREVISÃO
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
-    if run:
+    if st.session_state.get("calculado"):
         with st.spinner("Calculando probabilidade de atraso…"):
             try:
                 model, lookup_route, lookup_seller, encoders = load_artifacts()
@@ -535,6 +542,14 @@ with tab2:
 
     state_risk, top_routes = prepare_map_data(lookup_route)
     geojson                = load_brazil_geojson()
+    IBGE_CODES = {
+        "AC":"12","AL":"27","AM":"13","AP":"16","BA":"29","CE":"23",
+        "DF":"53","ES":"32","GO":"52","MA":"21","MG":"31","MS":"50",
+        "MT":"51","PA":"15","PB":"25","PE":"26","PI":"22","PR":"41",
+        "RJ":"33","RN":"24","RO":"11","RR":"14","RS":"43","SC":"42",
+        "SE":"28","SP":"35","TO":"17",
+    }
+    state_risk["codarea"] = state_risk["estado"].map(IBGE_CODES)
 
     if geojson is None:
         st.warning("Não foi possível baixar o GeoJSON do Brasil. Exibindo mapa de bolhas como fallback.")
