@@ -603,7 +603,7 @@ with tab2:
     st.divider()
     with st.expander("💡 Insights automáticos da base histórica", expanded=True):
         rota_critica = top_routes.iloc[0]["Rota"] if "Rota" in top_routes.columns else top_routes.iloc[0]["route"]
-        taxa_critica = top_routes.iloc[0]["Taxa Bruta (%)"]
+        taxa_critica = top_routes.iloc[0]["hist_atraso_route_t"]
 
         estados_criticos = state_risk[state_risk["taxa_pct"] >= 15]["estado"].tolist()
         estados_str      = ", ".join(estados_criticos) if estados_criticos else "nenhum"
