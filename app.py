@@ -294,7 +294,7 @@ st.divider()
 # ═════════════════════════════════════════════════════════════════════════════
 # ABAS
 # ═════════════════════════════════════════════════════════════════════════════
-tab1, tab2 = st.tabs(["🔍 Previsão de Risco", "🗺️ Mapa de Risco por Estado"])
+tab1, tab2, tab3 = st.tabs(["🔍 Previsão de Risco", "🗺️ Mapa de Risco por Estado", "👤 Sobre o Projeto"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -558,6 +558,89 @@ A **taxa suavizada** (Bayesian smoothing com α = 30) ancora rotas com poucos pe
 ao prior global, evitando estimativas extremas (0% ou 100%) em rotas raras.
 
 O **mapa** agrega a taxa bruta por estado de destino (média simples entre as rotas que chegam àquele estado).
+        """)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ABA 3 — SOBRE O PROJETO
+# ─────────────────────────────────────────────────────────────────────────────
+with tab3:
+    col_a, col_b = st.columns([1, 1], gap="large")
+
+    with col_a:
+        st.markdown("""
+## 👤 Autor
+
+**Hanrs Muller Lima da Silveira**
+
+Profissional de Supply Chain com foco em Analytics e Data Science aplicados
+a operações logísticas. Este projeto faz parte do **Supply Chain Analytics Lab**,
+uma iniciativa de desenvolvimento e portfólio em ciência de dados para cadeia de suprimentos.
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-hanrsmuller-blue?logo=linkedin&style=for-the-badge)](https://www.linkedin.com/in/hanrsmuller/)
+[![Gmail](https://img.shields.io/badge/Gmail-hanrs.silveira@gmail.com-red?logo=gmail&style=for-the-badge)](mailto:hanrs.silveira@gmail.com)
+[![GitHub](https://img.shields.io/badge/GitHub-HanrsMullerDSA-black?logo=github&style=for-the-badge)](https://github.com/HanrsMullerDSA)
+        """)
+
+        st.divider()
+
+        st.markdown("""
+## 📁 Repositório
+
+Todo o código, notebook e artefatos estão disponíveis no GitHub:
+
+[![GitHub Repo](https://img.shields.io/badge/otd--risk--predictor-black?logo=github&style=for-the-badge)](https://github.com/HanrsMullerDSA/otd-risk-predictor)
+
+O repositório inclui:
+- `app.py` — código completo da aplicação
+- `notebooks/` — notebook end-to-end com toda a metodologia
+- `artifacts/` — modelo treinado e tabelas de lookup
+- `README.md` — documentação completa
+        """)
+
+    with col_b:
+        st.markdown("""
+## 🎯 Sobre o Projeto
+
+Este projeto constrói um modelo preditivo de **OTD (On Time Delivery)** capaz de
+estimar a probabilidade de atraso **no momento da compra** — antes de qualquer
+evento logístico ocorrer.
+
+### Problema de negócio
+Em operações de e-commerce, atrasos na entrega impactam diretamente a experiência
+do cliente e o indicador OTIF. A maioria das soluções monitora o atraso **depois**
+que ele acontece. Este modelo antecipa o risco **antes**, quando ainda é possível agir.
+
+### Stack técnica
+| Camada | Tecnologia |
+|---|---|
+| Linguagem | Python 3.11 |
+| Modelo | XGBoost |
+| Engenharia de dados | Pandas, NumPy |
+| Visualização | Plotly, Streamlit |
+| Deploy | Streamlit Cloud |
+| Versionamento | Git + GitHub |
+
+### Destaques metodológicos
+- **Anti-leakage:** apenas variáveis disponíveis no momento da compra
+- **Split temporal:** treino com passado, teste com futuro
+- **Engenharia temporal causal:** histórico calculado com `merge_asof`
+- **Bayesian Smoothing:** estabiliza rotas com poucos pedidos
+- **Threshold calibrado:** 37,2% otimizado para maximizar F1-score
+        """)
+
+        st.divider()
+
+        st.markdown("""
+## 📊 Performance do Modelo
+
+| Métrica | Valor |
+|---|---|
+| AUC-ROC | 0,674 |
+| Recall (atrasos) | 38,3% |
+| Threshold ótimo | 37,2% |
+| Pedidos de treino | 77.158 |
+| Pedidos de teste | 19.290 |
+| Taxa base de atraso | 6,8% |
         """)
 
 # ── Rodapé ────────────────────────────────────────────────────────────────────
