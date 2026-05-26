@@ -152,6 +152,34 @@ O app está publicado no **Streamlit Cloud** com deploy contínuo — qualquer p
 
 ---
 
+## 🔄 Como Reproduzir os Artefatos
+
+Os artefatos da pasta `artifacts/` foram gerados a partir do dataset público da Olist.
+Para reproduzi-los localmente:
+
+**1. Baixe o dataset**
+Acesse [Olist E-Commerce Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
+no Kaggle e baixe os CSVs para uma pasta local.
+
+**2. Configure o caminho no notebook**
+No notebook `notebooks/otd_predictor_supply_chain_analytics.ipynb`, atualize a variável:
+```python
+DATA_PATH = "caminho/para/sua/pasta/olist_dataset"
+```
+
+**3. Execute o notebook completo**
+Execute todas as células em ordem. Ao final, salve os artefatos:
+```python
+import joblib, pickle
+joblib.dump(modelo_balanceado, "artifacts/modelo_balanceado.joblib")
+lookup_route.to_parquet("artifacts/lookup_route.parquet")
+lookup_seller.to_parquet("artifacts/lookup_seller.parquet")
+with open("artifacts/encoders.json", "w") as f:
+    json.dump(encoders, f)
+```
+
+---
+
 ## 👤 Autor
 
 **Hanrs Muller Lima da Silveira**
