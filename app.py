@@ -3,7 +3,6 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 import json
-import requests
 from datetime import date
 
 import joblib
@@ -21,16 +20,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Constantes (carregadas do metadata.json) ─────────────────────────────────
+# ── Constantes (carregadas do metadata.json) ──────────────────────────────────
 with open("artifacts/metadata.json", "r", encoding="utf-8") as _f:
     _meta = json.load(_f)
 
-THRESHOLD          = _meta["threshold_otimo"]          # 0.3715
-AUC_ROC            = _meta["auc_roc"]                  # 0.6348
-PRIOR_GLOBAL       = _meta["prior_global_atraso"]      # 0.0724
-VOLUME_MEDIANO     = _meta["volume_seller_mediano"]     # 3.0
-MODEL_VERSION      = _meta.get("model_version", "2.0")
-FEATURE_ORDER      = _meta["features"]
+THRESHOLD      = _meta["threshold_otimo"]        # 0.1864
+AUC_ROC        = _meta["auc_roc"]                # 0.6348
+PRIOR_GLOBAL   = _meta["prior_global_atraso"]    # 0.0724
+VOLUME_MEDIANO = _meta["volume_seller_mediano"]  # 3.0
+MODEL_VERSION  = _meta.get("model_version", "2.0")
+FEATURE_ORDER  = _meta["features"]               # 19 features
 
 STATE_COORDS = {
     "AC": (-9.97, -67.81), "AL": (-9.71, -35.74), "AM": (-3.10, -60.02),
@@ -45,6 +44,11 @@ STATE_COORDS = {
 }
 ESTADOS     = sorted(STATE_COORDS.keys())
 DIAS_SEMANA = ["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"]
+MESES_PT    = {
+    1:"Janeiro", 2:"Fevereiro", 3:"Março",    4:"Abril",
+    5:"Maio",    6:"Junho",     7:"Julho",     8:"Agosto",
+    9:"Setembro",10:"Outubro",  11:"Novembro", 12:"Dezembro",
+}
 
 GEOJSON_URL = (
     "https://raw.githubusercontent.com/jonates/opendata"
@@ -67,18 +71,13 @@ st.markdown("""
 
 @st.cache_resource(show_spinner="Carregando modelo…")
 def load_artifacts():
-    model         = joblib.load("artifacts/modelo_balanceado.joblib")
+    """Carrega modelo primário (otimizado + calibrado), lookups e encoders."""
+    model         = joblib.load("artifacts/calibrador_isotonic.joblib")
     lookup_route  = pd.read_parquet("artifacts/lookup_route.parquet")
     lookup_seller = pd.read_parquet("artifacts/lookup_seller.parquet")
     with open("artifacts/encoders.json", "r", encoding="utf-8") as f:
         encoders = json.load(f)
     return model, lookup_route, lookup_seller, encoders
-
-
-@st.cache_data(show_spinner=False)
-def load_metadata() -> dict:
-    with open("artifacts/metadata.json", "r", encoding="utf-8") as f:
-        return json.load(f)
 
 
 @st.cache_data(show_spinner=False)
@@ -102,15 +101,11 @@ def prepare_map_data(_lookup_route: pd.DataFrame):
     df["customer_state"] = df["route"].str[3:]
 
     # Agregação por estado de destino
-    agg_cols = {"hist_atraso_route_t": "mean", "route": "count"}
-    if "hist_atraso_route_smooth" in df.columns:
-        agg_cols["hist_atraso_route_smooth"] = "mean"
-
     state_risk = (
         df.groupby("customer_state")
         .agg(**{
-            "taxa_bruta":  ("hist_atraso_route_t", "mean"),
-            "n_rotas":     ("route", "count"),
+            "taxa_bruta": ("hist_atraso_route_t", "mean"),
+            "n_rotas":    ("route", "count"),
             **({"taxa_smooth": ("hist_atraso_route_smooth", "mean")}
                if "hist_atraso_route_smooth" in df.columns else {}),
         })
@@ -119,7 +114,6 @@ def prepare_map_data(_lookup_route: pd.DataFrame):
         .sort_values("taxa_bruta", ascending=False)
         .reset_index(drop=True)
     )
-    # Converter para percentual somente na coluna de display
     state_risk["taxa_pct"] = (state_risk["taxa_bruta"] * 100).round(2)
 
     # Top rotas
@@ -159,7 +153,7 @@ def encode(value: str, mapping: dict) -> int:
 def fetch_route_hist(df: pd.DataFrame, route: str):
     rows = df[df["route"] == route]
     if rows.empty:
-        return None, None
+        return None, None, None
     sort_col = next(
         (c for c in ["known_at_reference_route", "label_known_at"] if c in rows.columns),
         None,
@@ -167,13 +161,31 @@ def fetch_route_hist(df: pd.DataFrame, route: str):
     last   = rows.sort_values(sort_col).iloc[-1] if sort_col else rows.iloc[-1]
     t      = float(last["hist_atraso_route_t"])       if "hist_atraso_route_t"      in last.index else None
     smooth = float(last["hist_atraso_route_smooth"])  if "hist_atraso_route_smooth" in last.index else t
-    return t, smooth
+    smooth_seller = None  # rota não tem hist_seller — retornado separado
+    return t, smooth, smooth_seller
+
+
+def fetch_seller_hist(df: pd.DataFrame, seller_id=-1):
+    """Retorna histórico do seller. seller_id=-1 → cold start (prior global)."""
+    rows = df[df["seller_id"] == seller_id] if seller_id != -1 else pd.DataFrame()
+    if rows.empty:
+        return PRIOR_GLOBAL, PRIOR_GLOBAL, VOLUME_MEDIANO
+    sort_col = next(
+        (c for c in ["known_at_reference_seller", "label_known_at"] if c in rows.columns),
+        None,
+    )
+    last = rows.sort_values(sort_col).iloc[-1] if sort_col else rows.iloc[-1]
+    h_t      = float(last["hist_atraso_seller_t"])      if "hist_atraso_seller_t"      in last.index else PRIOR_GLOBAL
+    h_smooth = float(last["hist_atraso_seller_smooth"]) if "hist_atraso_seller_smooth" in last.index else h_t
+    vol      = float(last["volume_seller_7d_t"])        if "volume_seller_7d_t"        in last.index else VOLUME_MEDIANO
+    return h_t, h_smooth, vol
 
 
 def fetch_seller_globals(df: pd.DataFrame):
+    """Média global para cold start de seller desconhecido."""
     h = float(df["hist_atraso_seller_t"].mean()) if "hist_atraso_seller_t" in df.columns else PRIOR_GLOBAL
     v = float(df["volume_seller_7d_t"].mean())   if "volume_seller_7d_t"   in df.columns else VOLUME_MEDIANO
-    return h, v
+    return h, PRIOR_GLOBAL, v  # retorna (hist_t, hist_smooth, volume)
 
 
 def risk_meta(p: float):
@@ -248,6 +260,7 @@ def build_treemap(state_risk: pd.DataFrame) -> go.Figure:
     )
     return fig
 
+
 # ═════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ═════════════════════════════════════════════════════════════════════════════
@@ -269,6 +282,9 @@ with st.sidebar:
     freight_value  = st.number_input("Valor do frete (R$)",
                                      min_value=0.0, max_value=500.0,
                                      value=20.00, step=0.50, format="%.2f")
+    price          = st.number_input("Preço do produto (R$)",
+                                     min_value=0.0, max_value=10_000.0,
+                                     value=100.00, step=5.00, format="%.2f")
 
     st.markdown("### 📅 Prazo")
     purchase_date = st.date_input("Data da compra", value=date.today(), format="DD/MM/YYYY")
@@ -284,14 +300,15 @@ with st.sidebar:
     if st.session_state.get("calculado"):
         if st.button("↩️  Nova consulta", use_container_width=True):
             st.session_state["calculado"] = False
-            st.rerun()               
+            st.rerun()
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # HEADER
 # ═════════════════════════════════════════════════════════════════════════════
 st.title("📦 Predição de Atraso Logístico — OTD Risk Predictor")
 st.caption(
-    "Modelo XGBoost · 96 mil pedidos Olist 2016–2018 · "
+    "Modelo XGBoost otimizado + calibração isotônica · 96 mil pedidos Olist 2016–2018 · "
     "Engenharia temporal causal (anti-leakage) · Split temporal 80/20"
 )
 st.divider()
@@ -314,7 +331,7 @@ with tab1:
                 st.error(
                     f"**Artefato não encontrado:** `{exc}`\n\n"
                     "Certifique-se de que a pasta `artifacts/` contém:\n"
-                    "- `modelo_balanceado.joblib`\n"
+                    "- `calibrador_isotonic.joblib`\n"
                     "- `lookup_route.parquet`\n"
                     "- `lookup_seller.parquet`\n"
                     "- `encoders.json`\n"
@@ -322,45 +339,56 @@ with tab1:
                 )
                 st.stop()
 
-            # Features derivadas
-            route     = f"{seller_state}_{customer_state}"
-            weekday   = purchase_date.weekday()
-            month     = purchase_date.month
+            # ── Features derivadas ────────────────────────────────────────────
+            route   = f"{seller_state}_{customer_state}"
+            weekday = purchase_date.weekday()
+            month   = purchase_date.month
+            weekend = int(weekday >= 5)
+
+            # time_to_buy: hora do dia normalizada (sem hora disponível → meio-dia)
+            time_to_buy = 12
 
             lat1, lon1 = STATE_COORDS[seller_state]
             lat2, lon2 = STATE_COORDS[customer_state]
             distancia  = haversine_km(lat1, lon1, lat2, lon2)
 
-            hist_rt, hist_rs = fetch_route_hist(lookup_route, route)
-            cold_start = (hist_rt is None)
-            if cold_start:
+            # ── Histórico de rota ─────────────────────────────────────────────
+            hist_rt, hist_rs, _ = fetch_route_hist(lookup_route, route)
+            cold_start_rota = (hist_rt is None)
+            if cold_start_rota:
                 hist_rt = PRIOR_GLOBAL
                 hist_rs = PRIOR_GLOBAL
 
-            hist_seller, vol_seller = fetch_seller_globals(lookup_seller)
+            # ── Histórico de seller (cold start — seller desconhecido) ────────
+            hist_seller_t, hist_seller_smooth, vol_seller = fetch_seller_globals(lookup_seller)
 
+            # ── Monta vetor de features ───────────────────────────────────────
             X = pd.DataFrame([{
                 "freight_value":             freight_value,
+                "price":                     price,
                 "product_weight_g":          float(product_weight),
-                "customer_state":            encode(customer_state, encoders["customer_state"]),
-                "seller_state":              encode(seller_state,   encoders["seller_state"]),
+                "customer_state":            encode(customer_state,    encoders["customer_state"]),
+                "seller_state":              encode(seller_state,      encoders["seller_state"]),
                 "seller_id":                 -1,
-                "route":                     encode(route,          encoders["route"]),
+                "route":                     encode(route,             encoders["route"]),
+                "product_category_name":     encode("desconhecido",    encoders.get("product_category_name", {})),
                 "weekday":                   weekday,
                 "month":                     month,
+                "time_to_buy":               time_to_buy,
+                "weekend":                   weekend,
                 "hist_atraso_route_t":       hist_rt,
-                "hist_atraso_seller_t":      hist_seller,
                 "hist_atraso_route_smooth":  hist_rs,
+                "hist_atraso_seller_t":      hist_seller_t,
+                "hist_atraso_seller_smooth": hist_seller_smooth,
                 "prazo_prometido_dias":      delivery_days,
                 "distancia_km":              distancia,
                 "volume_seller_7d_t":        vol_seller,
             }])[FEATURE_ORDER]
 
-            idx_1  = list(model.classes_).index(1)
-            proba  = float(model.predict_proba(X)[0, idx_1])
+            proba = float(model.predict_proba(X)[0, 1])
             nivel, cor, icone = risk_meta(proba)
 
-        # Resultados
+        # ── Resultados ────────────────────────────────────────────────────────
         col_g, col_d = st.columns([1, 1], gap="large")
 
         with col_g:
@@ -388,17 +416,12 @@ with tab1:
         with col_d:
             st.subheader("📊 Parâmetros da Previsão")
             c1, c2 = st.columns(2)
-            c1.metric("Rota",                  route)
-            c2.metric("Distância estimada",    f"{distancia:,.0f} km")
-            c1.metric("Prazo prometido",       f"{delivery_days} dias")
-            c2.metric("Dia da compra",         DIAS_SEMANA[weekday])
-            MESES_PT = {
-                            1:"Janeiro", 2:"Fevereiro", 3:"Março", 4:"Abril",
-                            5:"Maio", 6:"Junho", 7:"Julho", 8:"Agosto",
-                            9:"Setembro", 10:"Outubro", 11:"Novembro", 12:"Dezembro"
-                        }
-            c1.metric("Mês", f"{MESES_PT[purchase_date.month]}/{purchase_date.year}")        
-            c2.metric("Frete", f"R$ {freight_value:.2f}".replace(".", ","))
+            c1.metric("Rota",               route)
+            c2.metric("Distância estimada", f"{distancia:,.0f} km")
+            c1.metric("Prazo prometido",    f"{delivery_days} dias")
+            c2.metric("Dia da compra",      DIAS_SEMANA[weekday])
+            c1.metric("Mês",                f"{MESES_PT[month]}/{purchase_date.year}")
+            c2.metric("Frete",              f"R$ {freight_value:.2f}".replace(".", ","))
 
             st.markdown("**Sinais históricos da rota:**")
             c3, c4 = st.columns(2)
@@ -407,7 +430,7 @@ with tab1:
             c4.metric("Taxa suavizada (rota)", f"{hist_rs*100:.1f}%",
                       help="hist_atraso_route_smooth — Bayesian smoothing α=30")
 
-            if cold_start:
+            if cold_start_rota:
                 st.info("ℹ️ **Rota sem histórico.** Usando prior global como referência.")
             st.caption(
                 "_Seller desconhecido → cold start (prior global)._  \n"
@@ -419,10 +442,10 @@ with tab1:
 
     else:
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Algoritmo",        f"XGBoost v{MODEL_VERSION}")
-        k2.metric("AUC-ROC",          f"{AUC_ROC:.4f}")
-        k3.metric("PR-AUC",           "0.0575")
-        k4.metric("Threshold ótimo",  f"{THRESHOLD*100:.2f}%")
+        k1.metric("Algoritmo",       f"XGBoost v{MODEL_VERSION}")
+        k2.metric("AUC-ROC",         f"{AUC_ROC:.4f}")
+        k3.metric("PR-AUC",          "0.0575")
+        k4.metric("Threshold ótimo", f"{THRESHOLD*100:.2f}%")
 
         st.info("👈 **Configure os parâmetros na barra lateral** e clique em *Calcular risco de atraso*.")
 
@@ -437,18 +460,18 @@ evento logístico ocorrer — para permitir intervenção preventiva na operaç�
 ### 🔑 Principais drivers de atraso
 | Feature | Importância (gain) |
 |---|---|
-| Sazonalidade — mês | 18.4% |
-| Histórico da rota (suavizado) | 11.9% |
-| Estado de destino | 10.1% |
-| Prazo prometido | 7.6% |
-| Histórico bruto da rota | 6.7% |
+| Sazonalidade — mês | 18,4% |
+| Histórico da rota (suavizado) | 11,9% |
+| Estado de destino | 10,1% |
+| Prazo prometido | 7,6% |
+| Histórico bruto da rota | 6,7% |
             """)
         with col_r:
             st.markdown(f"""
 ### ⚙️ Como funciona?
-1. **Entradas:** origem, destino, peso, frete, data, prazo
-2. **Features derivadas:** rota, distância Haversine, dia da semana, mês
-3. **Histórico causal:** taxa de atraso da rota (anti-leakage, apenas dados até t-1)
+1. **Entradas:** origem, destino, peso, preço, frete, data, prazo
+2. **Features derivadas:** rota, distância Haversine, dia da semana, mês, weekend
+3. **Histórico causal:** taxa de atraso da rota e do seller (anti-leakage, até t-1)
 4. **Modelo:** XGBoost otimizado com `TimeSeriesSplit` + calibração isotônica
 5. **Decisão:** threshold calibrado em **{THRESHOLD*100:.2f}%** (max F1-score)
 
@@ -472,7 +495,6 @@ with tab2:
         "agregada por estado de destino, usando engenharia temporal causal (anti-leakage)."
     )
 
-    # Carrega artefatos (já em cache se Tab 1 foi usado)
     try:
         _, lookup_route, _, _ = load_artifacts()
     except FileNotFoundError as exc:
@@ -482,7 +504,7 @@ with tab2:
     state_risk, top_routes = prepare_map_data(lookup_route)
     st.plotly_chart(build_treemap(state_risk), use_container_width=True)
 
-    # ── KPIs abaixo do mapa ───────────────────────────────────────────────────
+    # ── KPIs ─────────────────────────────────────────────────────────────────
     st.divider()
     top_s  = state_risk.iloc[0]
     bot_s  = state_risk.iloc[-1]
@@ -490,21 +512,14 @@ with tab2:
     above  = (state_risk["taxa_pct"] > avg).sum()
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric(
-        "Estado mais crítico",
-        top_s["estado"],
-        f"{top_s['taxa_pct']:.1f}% de atraso",
-        delta_color="inverse",
-    )
-    k2.metric(
-        "Estado mais seguro",
-        bot_s["estado"],
-        f"{bot_s['taxa_pct']:.1f}% de atraso",
-    )
-    k3.metric("Taxa média geral",   f"{avg:.1f}%")
-    k4.metric("Estados acima da média", f"{above} de {len(state_risk)}")
+    k1.metric("Estado mais crítico",     top_s["estado"],
+              f"{top_s['taxa_pct']:.1f}% de atraso", delta_color="inverse")
+    k2.metric("Estado mais seguro",      bot_s["estado"],
+              f"{bot_s['taxa_pct']:.1f}% de atraso")
+    k3.metric("Taxa média geral",        f"{avg:.1f}%")
+    k4.metric("Estados acima da média",  f"{above} de {len(state_risk)}")
 
-    # ── Gráfico de barras + Tabela de rotas ───────────────────────────────────
+    # ── Tabela top rotas ──────────────────────────────────────────────────────
     st.divider()
     st.divider()
     st.markdown("**Top 15 Rotas com Maior Risco Histórico**")
@@ -514,7 +529,6 @@ with tab2:
         rename_map["hist_atraso_route_smooth"] = "Taxa Suavizada (%)"
 
     display_tbl = top_routes.rename(columns=rename_map)
-
     fmt = {"Taxa Bruta (%)": "{:.1f}"}
     if "Taxa Suavizada (%)" in display_tbl.columns:
         fmt["Taxa Suavizada (%)"] = "{:.1f}"
@@ -526,12 +540,11 @@ with tab2:
     )
     st.dataframe(styled, use_container_width=True, height=430)
 
-    # ── Insights automáticos ──────────────────────────────────────────────────
+    # ── Insights ──────────────────────────────────────────────────────────────
     st.divider()
     with st.expander("💡 Insights automáticos da base histórica", expanded=True):
         rota_critica = top_routes.iloc[0]["Rota"] if "Rota" in top_routes.columns else top_routes.iloc[0]["route"]
         taxa_critica = top_routes.iloc[0]["hist_atraso_route_t"]
-
         estados_criticos = state_risk[state_risk["taxa_pct"] >= 15]["estado"].tolist()
         estados_str      = ", ".join(estados_criticos) if estados_criticos else "nenhum"
 
@@ -546,7 +559,7 @@ with tab2:
         """)
 
     with st.expander("📚 Metodologia — como a taxa histórica é calculada?"):
-        st.markdown(f"""
+        st.markdown("""
 **Fonte dos dados:** `lookup_route.parquet` — tabela gerada durante a engenharia temporal do notebook.
 
 Para cada rota (`SELLER_STATE_CUSTOMER_STATE`), a taxa histórica foi calculada com:
@@ -558,11 +571,12 @@ hist_atraso_route_t = soma de atrasos da rota / pedidos observados
 usando **apenas pedidos cujo resultado já era conhecido antes do momento da compra**
 (`label_known_at < order_purchase_timestamp`). Nenhum dado futuro contamina o cálculo.
 
-A **taxa suavizada** (Bayesian smoothing com α = 30) ancora rotas com poucos pedidos
+A **taxa suavizada** (Bayesian smoothing com α=30) ancora rotas com poucos pedidos
 ao prior global, evitando estimativas extremas (0% ou 100%) em rotas raras.
 
 O **mapa** agrega a taxa bruta por estado de destino (média simples entre as rotas que chegam àquele estado).
         """)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ABA 3 — SOBRE O PROJETO
@@ -618,7 +632,7 @@ que ele acontece. Este modelo antecipa o risco **antes**, quando ainda é possí
 | Camada | Tecnologia |
 |---|---|
 | Linguagem | Python 3.11 |
-| Modelo | XGBoost |
+| Modelo | XGBoost + Calibração Isotônica |
 | Engenharia de dados | Pandas, NumPy |
 | Visualização | Plotly, Streamlit |
 | Deploy | Streamlit Cloud |
@@ -631,7 +645,6 @@ que ele acontece. Este modelo antecipa o risco **antes**, quando ainda é possí
 - **Bayesian Smoothing:** α=30 (rotas) e α=10 (sellers)
 - **Tuning:** `RandomizedSearchCV` com `TimeSeriesSplit` otimizando PR-AUC
 - **Calibração isotônica:** probabilidades calibradas para decisão operacional
-- **Threshold calibrado:** {THRESHOLD*100:.2f}% otimizado para maximizar F1-score
         """)
 
         st.divider()
@@ -659,5 +672,5 @@ que ele acontece. Este modelo antecipa o risco **antes**, quando ainda é possí
 st.divider()
 st.caption(
     "Supply Chain Analytics Lab · Projeto 1 — OTD Prediction · "
-    "Dataset Olist 2016–2018 · XGBoost + Engenharia Temporal Causal"
+    "Dataset Olist 2016–2018 · XGBoost + Calibração Isotônica + Engenharia Temporal Causal"
 )

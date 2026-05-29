@@ -1,16 +1,21 @@
 {
   "features": [
     "freight_value",
+    "price",
     "product_weight_g",
     "customer_state",
     "seller_state",
     "seller_id",
     "route",
+    "product_category_name",
     "weekday",
     "month",
+    "time_to_buy",
+    "weekend",
     "hist_atraso_route_t",
-    "hist_atraso_seller_t",
     "hist_atraso_route_smooth",
+    "hist_atraso_seller_t",
+    "hist_atraso_seller_smooth",
     "prazo_prometido_dias",
     "distancia_km",
     "volume_seller_7d_t"
@@ -19,13 +24,15 @@
     "customer_state",
     "seller_state",
     "seller_id",
-    "route"
+    "route",
+    "product_category_name"
   ],
   "threshold_padrao": 0.5,
-  "threshold_otimo": 0.3715302050113678,
+  "threshold_otimo": 0.18644067645072937,
   "prior_global_atraso": 0.07240865819284156,
   "volume_seller_mediano": 3.0,
   "model_version": "2.0",
+  "modelo_primario": "calibrador_isotonic.joblib",
   "auc_roc": 0.6348,
   "pr_auc": 0.0575
 }
