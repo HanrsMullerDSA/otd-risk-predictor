@@ -57,7 +57,7 @@ O modelo usa **apenas informações disponíveis no momento da compra**. Variáv
 | Histórico causal até t-1 | `time_variance` |
 | Prazo prometido ao cliente | Data real de entrega |
 | Peso, preço e valor do frete | `seller_lead_time` final |
-| Sazonalidade (mês, dia, weekend) | Qualquer resultado do pedido |
+| Sazonalidade (mês, dia, semana) | Qualquer resultado do pedido |
 | Distância geográfica (haversine) | — |
 
 ### Engenharia Temporal Causal
