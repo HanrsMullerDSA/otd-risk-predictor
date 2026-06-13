@@ -124,7 +124,7 @@ A diferença de ~4 p.p. reflete melhoria real da operação ao longo do tempo �
 | `volume_seller_7d_t` | Operacional | Volume de pedidos do seller nos últimos 7 dias (anti-leakage) |
 
 ### Threshold de Decisão
-- **Threshold ótimo:** `0.3715` — calibrado para maximizar F1-score da classe de atraso
+- **Threshold ótimo:** `0.186` — calibrado para maximizar F1-score da classe de atraso
 - **Prior global de atraso:** `7,24%` — usado como fallback (cold start) para rotas/sellers sem histórico
 
 ---
